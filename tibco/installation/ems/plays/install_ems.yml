@@ -31,5 +31,5 @@
     
     #run this playbook using the server_group from the conf.
     #usage
-    #ansible-playbook -i conf/tibco-hosts plays/install-ems.yml -e server_group=dev-ems
+    #ansible-playbook -i conf/tibco-hosts plays/install-ems.yml -e server_group=dev1-ems
     # refer to conf/tibco-hosts for dev-ems group
