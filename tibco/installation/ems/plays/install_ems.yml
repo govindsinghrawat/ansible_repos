@@ -5,7 +5,7 @@
    tasks:
 
    - name: Check the latest version of EMS rpm installed.
-     shell: `which yum` list installed | grep ems | awk '{print $2}' | cut -d'-' -f1
+     shell: yum list installed | grep ems | awk '{print $2}' | cut -d'-' -f1
 
    - name: Create destination install directory to keep ems install rpm
      file: path=/opt/ems-install/ state=directory mode=0750
