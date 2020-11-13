@@ -10,10 +10,10 @@
    - name: Create destination install directory to keep ems install rpm
      file: path=/opt/ems-install/ state=directory mode=0750
 
-   - name: Copy the folder containing all rpms to destination server /opt/ems-install/rpm/
-     copy: src=<absolutepathtofolder>/rpm  dest=/opt/ems-install/ owner=root group=root mode=0750
+   - name: Copy the local folder called "rpm" containing all rpms to destination server /opt/ems-install/rpm/
+     copy: src=<absolute_local_path_folder>/rpm  dest=/opt/ems-install/ owner=root group=root mode=0750
 
-   - name: find rpm files which copied over and register the result 
+   - name: Find rpm files which copied over and register the result 
      find:
       paths: /opt/ems-install/rpm
       patterns: "*.rpm"
@@ -29,7 +29,7 @@
       var: ems_rpm_list
 
     # Use yum to install with a list
-   - name: install ems rpm files using ems_rpm_list
+   - name: Install ems rpm files using ems_rpm_list
      yum:
        name: "{{ems_rpm_list}}"
        state: present
