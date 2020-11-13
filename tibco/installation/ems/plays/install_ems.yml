@@ -23,6 +23,11 @@
    - set_fact:
       ems_rpm_list: "{{ ems_rpm_files.files | map(attribute='path') | list}}"
 
+    #Print all the packages which will be installed
+   - name: Print all the found rpm packages which will be installed
+     debug:
+      var: ems_rpm_list
+
     # Use yum to install with a list
    - name: install ems rpm files using ems_rpm_list
      yum:
@@ -32,4 +37,4 @@
     #run this playbook using the server_group from the conf.
     #usage
     #ansible-playbook -i conf/tibco-hosts plays/install-ems.yml -e server_group=dev1-ems
-    # refer to conf/tibco-hosts for dev-ems group
+    # refer to conf/tibco-hosts for dev1-ems group
