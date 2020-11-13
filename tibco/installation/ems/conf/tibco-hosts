@@ -1,0 +1,10 @@
+[dev1-ems]
+my_ems_hostname1.com
+
+[dev2-ems]
+my_ems_hostname2.com
+
+
+[dev-ems-install:children]
+dev1-ems
+dev2-ems
