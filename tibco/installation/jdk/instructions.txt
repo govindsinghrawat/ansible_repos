@@ -1,0 +1,10 @@
+#Create following directories
+mkdir jdk-rpm conf plays
+
+#Keep the jdk rpm in the jdk-rpm folder
+
+#Run using below command
+ansible-playbook -i conf/my-tibco-hosts plays/install_jdk.yml -e server_group=group1
+
+#The playbook backs up existing /usr/java and then installs the jdk rpm.
+#It then copied tibcojre and then installs only the necessary files.
