@@ -1,0 +1,129 @@
+---
+
+ - hosts: '{{ server_group }}'
+   become: yes
+   tasks:
+
+   #Check if there is enought space on device
+   - name: 'Ensure that free space on {{ mountname }} is grater than 30%  ( > item.size_total|float * 0.3) or 4GB '
+     assert:
+      that: item.size_available > 4294967296
+      msg: 'disk space has has 4GB space'
+     when: item.mount == '/apps/'
+     with_items: '{{ ansible_mounts }}'
+
+   #Create variables for backup naming
+   - name: 'Take todays date in variable for various backup dirs'
+     command: date '+%F'
+     register: mydate
+
+   - name: 'Take todays date and time variable for backup dirs suffix'
+     command: date '+%Y%m%d%H%M'
+     register: suffix
+
+   #Backup existing /usr/java
+   - name: 'Create destination backup directory ems install rpm'
+     file: path=/apps/java_backups/{{ mydate.stdout }} state=directory mode=0750
+
+   - name: "Create backup of /usr/java in /apps/java_backups"
+     command: cp -ar /usr/java/. /apps/java_backups/{{ mydate.stdout }}/java_bkp_ORIG_{{ suffix.stdout }}
+
+   #Check what all java rpms are installed
+   - name: 'Check the latest version of JDK rpm installed.'
+     shell: rpm -qa | grep jdk
+     register: installed_jdks
+     ignore_errors: yes
+     #ignored errors as what if jdk is not installed at all
+
+   #Print the installed jdks found
+   - name: 'Print each item from installed jdks'
+     debug:
+      var: item
+     with_items: '{{ installed_jdks.stdout_lines }}'
+     when: not installed_jdks.stderr
+
+
+   #Create the directory where you stage the jdk rpm
+   - name: 'Ensures /apps/install/jdk-rpm dir exists'
+     file: path=/apps/install/ state=directory mode=0755
+
+   #Copy the java rpm
+   - name: 'Copy the folder containing all java rpms to destination server /apps/install/jdk-rpm/'
+     copy: src=/<your_ansible_dir>/installation/jdk/jdk-rpm  dest=/apps/install/{{ mydate.stdout }} owner=root group=root mode=0750
+
+   #Get the list of jdks in case more than one were copied
+   - name: 'Find rpm files which copied over and register the result'
+     find:
+      paths: /apps/install/{{ mydate.stdout }}/jdk-rpm
+      patterns: "*.rpm"
+     register: jdk_rpm_files
+
+   #Create a list of all rpms to loop through if more than one rpm
+   - set_fact:
+      jdk_rpm_list: "{{ jdk_rpm_files.files | map(attribute='path') | list}}"
+
+   #Yum install the rpm
+   #- name: 'Install java rpm files using jdk_rpm_list'
+   #  yum:
+   #    name: "{{ jdk_rpm_list }}"
+   #    state: present
+
+   #Rpm install the packages
+   - name: 'Install rpms'
+     shell: rpm -ivh '{{ item }}'
+     with_items: '{{ jdk_rpm_list }}'
+
+
+   #Check the nre cacerts are present or not
+   - name: 'Check if cacerts has been renamed'
+     stat: path=/usr/java/default/jre/lib/security/cacerts
+     register: cacerts
+
+   #Take backup of new cacerts that came in
+   - name: 'Create cacerts backup'
+     command: mv /usr/java/default/jre/lib/security/cacerts /usr/java/default/jre/lib/security/cacerts_bkp_ORIG_{{ suffix.stdout }}
+     when: cacerts.stat.isreg is defined and cacerts.stat.isreg == True
+
+   #Link the existing cacerts to the new java install
+   - name: 'Ensure cacerts link exists'
+     file: path=/usr/java/default/jre/lib/security/cacerts state=link src=/etc/pki/java/cacerts
+
+   #Start tibcojre copy
+   - name: 'Check if tibcojre exists'
+     stat: path=/apps/tibco/tibcojre64
+     register: tibco_jre
+
+
+   #Backup existing tibcojre
+   - name: "Create backup of /apps/tibco/tibcojre64 in /apps/java_backups"
+     command: cp -ar /apps/tibco/tibcojre64/. /apps/java_backups/{{ mydate.stdout }}/tibcojre64_bkp_ORIG_{{ suffix.stdout }}
+     when: >
+      tibco_jre.stat.exists and
+      tibco_jre.stat.isdir
+
+   #Update the required tibcojre binaries
+   - name: 'Copy only the required jre files from /usr/java/latest'
+     shell: cp -fRup /usr/java/latest/jre/* /apps/tibco/tibcojre64/1.8.0/
+     when: >
+      tibco_jre.stat.exists and
+      tibco_jre.stat.isdir
+
+   - name: 'Copy  tools.jar with preserve'
+     command: cp -Rpf /usr/java/latest/lib/tools.jar /apps/tibco/tibcojre64/1.8.0/lib/
+     when: >
+      tibco_jre.stat.exists and
+      tibco_jre.stat.isdir
+
+
+   - name: 'Copy javac with preserve'
+     command: cp -Rpf /usr/java/latest/bin/javac /apps/tibco/tibcojre64/1.8.0/bin/
+     when: >
+      tibco_jre.stat.exists and
+      tibco_jre.stat.isdir
+
+
+   - name: 'Link the tibcojre cacerts'
+     file: path=/apps/tibco/tibcojre64/1.8.0/lib/security/cacerts state=link src=/etc/pki/java/cacerts
+     when: >
+      tibco_jre.stat.exists and
+      tibco_jre.stat.isdir
