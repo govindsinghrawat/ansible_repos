@@ -4,37 +4,73 @@
    become: yes
    tasks:
 
-   - name: Check the latest version of EMS rpm installed.
-     shell: yum list installed | grep ems | awk '{print $2}' | cut -d'-' -f1
+   #Check if there is enought space on device
+   - name: 'Ensure that free space on {{ mountname }} is grater than 30%  ( > item.size_total|float * 0.3) or 8GB '
+     assert:
+      that: item.size_available > 8589934592
+      msg: 'disk space has 8GB free space'
+     when: item.mount == '/opt'
+     with_items: '{{ ansible_mounts }}'
 
-   - name: Create destination install directory to keep ems install rpm
-     file: path=/opt/ems-install/ state=directory mode=0750
+   #Create variables for backup naming
+   - name: 'Take todays date in variable for various backup dirs'
+     command: date '+%F'
+     register: mydate
 
-   - name: Copy the local folder called "rpm" containing all rpms to destination server /opt/ems-install/rpm/
-     copy: src=<absolute_local_path_folder>/rpm  dest=/opt/ems-install/ owner=root group=root mode=0750
+   - name: 'Take todays date and time variable for backup dirs suffix'
+     command: date '+%Y%m%d%H%M'
+     register: suffix
 
-   - name: Find rpm files which copied over and register the result 
+   #Backup existing /usr/java
+   - name: 'Create destination backup directory ems install rpm'
+     file: path=/opt/tibco_backups/{{ mydate.stdout }} state=directory mode=0750
+
+   - name: "Create backup of /opt/tibco in /opt/tibco_backups"
+     command: cp -ar /opt/tibco/. /opt/tibco_backups/{{ mydate.stdout }}/tibco_bkp_ORIG_{{ suffix.stdout }}
+
+   #Check what all ems rpms are installed
+   - name: 'Check the latest version of EMS rpm installed.'
+     shell: rpm -qa | grep ems
+     register: installed_ems
+     ignore_errors: yes
+     #ignored errors as what if jdk is not installed at all
+
+   #Print the installed ems found
+   - name: 'Print each item from installed ems'
+     debug:
+      var: item
+     with_items: '{{ installed_ems.stdout_lines }}'
+     when: not installed_ems.stderr
+
+
+   #Create the directory where you stage the jdk rpm
+   - name: 'Ensures /opt/install/ems-rpm dir exists'
+     file: path=/opt/install/ state=directory mode=0755
+
+   #Copy the java rpm
+   - name: 'Copy the folder containing all ems rpms to destination server /opt/install/ems-rpm/'
+     copy: src=/home/grawat/tibco-ansible/rpm/ems-rpm  dest=/opt/install/{{ mydate.stdout }} owner=root group=root mode=0750
+
+   #Get the list of jdks in case more than one were copied
+   - name: 'Find rpm files which copied over and register the result'
      find:
-      paths: /opt/ems-install/rpm
+      paths: /opt/install/{{ mydate.stdout }}/ems-rpm
       patterns: "*.rpm"
      register: ems_rpm_files
 
-    # Create a list of the local rpms to use with the yum install command
+   #Create a list of all rpms to loop through if more than one rpm
    - set_fact:
       ems_rpm_list: "{{ ems_rpm_files.files | map(attribute='path') | list}}"
 
-    #Print all the packages which will be installed
-   - name: Print all the found rpm packages which will be installed
-     debug:
-      var: ems_rpm_list
+   #Rpm install the packages
+   - name: 'Install rpms'
+     shell: rpm -ivh '{{ item }}'
+     with_items: '{{ ems_rpm_list }}'
 
-    # Use yum to install with a list
-   - name: Install ems rpm files using ems_rpm_list
-     yum:
-       name: "{{ems_rpm_list}}"
-       state: present
-    
-    #run this playbook using the server_group from the conf.
-    #usage
-    #ansible-playbook -i conf/tibco-hosts plays/install-ems.yml -e server_group=dev1-ems
-    # refer to conf/tibco-hosts for dev1-ems group
+   #Set the permission of newly created directory and files to user:group of choice
+   - name: 'Chown the directory /opt/ems/8.5'
+     command: chown -R tibco:tibco /opt/tibco/ems/8.5
+     #command: find /opt/tibco/ems/8.5 -type d -exec chown tibco:tibco {} \;
+     #command: find /opt/tibco/ems/8.5 -type f -exec chown tibco:tibco {} \;
+     #command: find {{ path }} -type d -exec chmod 0755 {} \;
+     #command: find {{ path }} -type f -exec chmod 0644 {} \;
