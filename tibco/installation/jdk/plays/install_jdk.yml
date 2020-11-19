@@ -127,3 +127,36 @@
      when: >
       tibco_jre.stat.exists and
       tibco_jre.stat.isdir
+
+   - name: 'Chown the tibcojre directory'
+     command: chown -R tibco:tibco /opt/tibco/
+     when: >
+      tibco_jre.stat.exists and
+      tibco_jre.stat.isdir
+
+   - name: 'Move old localpolicy and US policy jars if they exist'
+     command: mv /opt/tibco/tibcojre64/1.8.0/lib/security/{{ item }} /opt/tibco/tibcojre64/1.8.0/lib/security/old_{{ item }}
+     with_items:
+      - local_policy.jar
+      - US_export_policy.jar
+     ignore_errors: yes
+     when: >
+      tibco_jre.stat.exists and
+      tibco_jre.stat.isdir
+
+   #Check the nre cacerts are present or not
+   #- name: 'Check if cacerts has been renamed'
+   #  stat: path=/opt/tibco/tibcojre64/1.8.0/lib/security/cacerts
+   #  register: tibcocacerts
+
+   #Take backup of new cacerts that came in
+   #- name: 'Create cacerts backup'
+   #  command: mv /opt/tibco/tibcojre64/1.8.0/lib/security/cacerts /opt/tibco/tibcojre64/1.8.0/lib/security/cacerts_bkp_ORIG_{{ suffix.stdout }}
+   #  when: tibcocacerts.stat.isreg is defined and tibcocacerts.stat.isreg == True
+
+
+#   - name: 'Link the tibcojre cacerts'
+#     file: path=/opt/tibco/tibcojre64/1.8.0/lib/security/cacerts state=link src=/etc/pki/java/cacerts
+#     when: >
+#      tibco_jre.stat.exists and
+#      tibco_jre.stat.isdir
