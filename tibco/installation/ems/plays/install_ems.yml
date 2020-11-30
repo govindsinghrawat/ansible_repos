@@ -1,16 +1,32 @@
 ---
 
  - hosts: '{{ server_group }}'
+   vars:
+     ems_version: 8.5
+     threshold: 8388608
+     drive: '/app'
+     tibco_home: '/app/tibco'
+     tibco_backup: '/app/tibco_backups'
+     backup_prefix: 'tibco_bkp_ORIG_'
+     local_rpm_source: '/home/user/tibco-ansible/rpm/ems-rpm'
+     remote_rpm_source: '/app/install/'
+     tibco_fid: 'tibuser'
+     tibco_gid: 'tibgrp'
+
    become: yes
    tasks:
 
    #Check if there is enought space on device
    - name: 'Ensure that free space on {{ mountname }} is grater than 30%  ( > item.size_total|float * 0.3) or 8GB '
-     assert:
-      that: item.size_available > 8589934592
-      msg: 'disk space has 8GB free space'
-     when: item.mount == '/opt'
-     with_items: '{{ ansible_mounts }}'
+     shell: "df --output=avail -k {{ drive }}  | tail -1 | awk '$1 < {{ threshold }}'"
+     register: check
+     failed_when: check.rc > 0
+
+   - name: "Checking if free space check failed"
+     fail:
+       msg: "{{ drive }} has {{ check.stdout }} free space. Lower than threshold set of : {{ threshold }}"
+     when: check.stdout | length != 0
+
 
    #Create variables for backup naming
    - name: 'Take todays date in variable for various backup dirs'
@@ -21,12 +37,12 @@
      command: date '+%Y%m%d%H%M'
      register: suffix
 
-   #Backup existing /usr/java
-   - name: 'Create destination backup directory ems install rpm'
-     file: path=/opt/tibco_backups/{{ mydate.stdout }} state=directory mode=0750
+   #Backup existing /opt/tibco dir
+   - name: 'Create directory {{ tibco_backup }}/{{ mydate.stdout }} to store already isntalled software backup'
+     file: path="{{ tibco_backup }}/{{ mydate.stdout }}" state=directory mode=0750
 
-   - name: "Create backup of /opt/tibco in /opt/tibco_backups"
-     command: cp -ar /opt/tibco/. /opt/tibco_backups/{{ mydate.stdout }}/tibco_bkp_ORIG_{{ suffix.stdout }}
+   - name: "Create backup of {{ tibco_home }} in {{ tibco_backup }}/{{ mydate.stdout }}/{{ backup_prefix }}{{ suffix.stdout }}"
+     command: "cp -ar {{ tibco_home }}/. {{ tibco_backup }}/{{ mydate.stdout }}/{{ backup_prefix }}{{ suffix.stdout }}"
 
    #Check what all ems rpms are installed
    - name: 'Check the latest version of EMS rpm installed.'
@@ -44,17 +60,17 @@
 
 
    #Create the directory where you stage the jdk rpm
-   - name: 'Ensures /opt/install/ems-rpm dir exists'
-     file: path=/opt/install/ state=directory mode=0755
+   - name: 'Ensures {{ remote_rpm_source }} dir exists'
+     file: path={{ remote_rpm_source }}  state=directory mode=0755
 
    #Copy the java rpm
-   - name: 'Copy the folder containing all ems rpms to destination server /opt/install/ems-rpm/'
-     copy: src=/home/grawat/tibco-ansible/rpm/ems-rpm  dest=/opt/install/{{ mydate.stdout }} owner=root group=root mode=0750
+   - name: 'Copy the folder containing all ems rpms to destination server {{ remote_rpm_source }}/{{ mydate.stdout }}/ems-rpm/'
+     copy: src={{ local_rpm_source }}  dest="{{ remote_rpm_source }}/{{ mydate.stdout }}" owner=root group=root mode=0750
 
    #Get the list of jdks in case more than one were copied
    - name: 'Find rpm files which copied over and register the result'
      find:
-      paths: /opt/install/{{ mydate.stdout }}/ems-rpm
+      paths: "{{ remote_rpm_source }}/{{ mydate.stdout }}/ems-rpm"
       patterns: "*.rpm"
      register: ems_rpm_files
 
@@ -68,8 +84,18 @@
      with_items: '{{ ems_rpm_list }}'
 
    #Set the permission of newly created directory and files to user:group of choice
-   - name: 'Chown the directory /opt/ems/8.5'
-     command: chown -R tibco:tibco /opt/tibco/ems/8.5
+   - name: 'Chown the directory {{ tibco_home }}/ems/{{ ems_version }}'
+     command: "chown -R {{ tibco_fid }}:{{ tibco_fid }} {{ tibco_home }}/ems/{{ ems_version }}"
+
+   #Cleanup the ems rpm copied to server
+   - name: 'Remove directory having EMS rpms {{ remote_rpm_source }}/{{ mydate.stdout }}/ems-rpm'
+     file:
+      path: "{{ remote_rpm_source }}/{{ mydate.stdout }}/ems-rpm"
+      state: absent
+
+   #Set the permission of newly created directory and files to user:group of choice
+   #- name: 'Chown the directory /opt/ems/8.5'
+   #  command: chown -R tibco:tibco /opt/tibco/ems/8.5
      #command: find /opt/tibco/ems/8.5 -type d -exec chown tibco:tibco {} \;
      #command: find /opt/tibco/ems/8.5 -type f -exec chown tibco:tibco {} \;
      #command: find {{ path }} -type d -exec chmod 0755 {} \;
